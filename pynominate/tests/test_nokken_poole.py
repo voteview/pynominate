@@ -54,7 +54,7 @@ def test_nokken_poole_member_estimate(payload):
 def test_make_member_congress_votes(payload):
     result = nokken_poole.make_member_congress_votes(payload)
     expected = nokken_poole.member_congress_votes(payload)
-    assert result == expected
+    np.testing.assert_equal(result, expected)
 
 
 @pytest.mark.skip

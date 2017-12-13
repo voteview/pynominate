@@ -20,15 +20,14 @@ def merge_dicts(x, y, z):
     return zz
 
 
-def make_member_congress_votes(payload):
+def make_member_to_votes_and_bill_parameters(payload):
     member_chamber_congress_count = 0
-    vote_count = 0
     tmp_dct = {}
     for m in payload['memberwise']:
         for v in m['votes']:
-            vote_count += 1
             icpsr_chamber_congress = "%i_%s_%s" % (
-                m['icpsr'], v[1][1], v[1][2:5])
+                m['icpsr'], v[1][1], v[1][2:5]
+            )
             if icpsr_chamber_congress in tmp_dct:
                 tmp_dct[icpsr_chamber_congress]['votes'].append(v[0])
                 tmp_dct[icpsr_chamber_congress][
@@ -36,15 +35,37 @@ def make_member_congress_votes(payload):
             else:
                 member_chamber_congress_count += 1
                 tmp_dct[icpsr_chamber_congress] = {
-                    'votes': [v[0]], 'bp': [payload['bp'][str(v[1])]]}
+                    'votes': [v[0]],
+                    'bp': [payload['bp'][str(v[1])]],
+                }
+    return tmp_dct
+
+
+def make_member_congress_votes(payload):
+    tmp_dct = make_member_to_votes_and_bill_parameters(payload)
     dat = {}
-    dat['data'] = [{"votes": np.array(v['votes']),
-                    'bp':np.transpose(np.array(v['bp']))}
-                   for v in tmp_dct.values()]
-    dat['icpsr_chamber_congress'] = [dict(zip(["icpsr", "chamber", "cong", "nvotes"],
-                                              (k.split("_") + [len(v['votes'])]))) for k, v in tmp_dct.iteritems()]
-    dat['start'] = [(str(x['icpsr']) in payload['idpt'] and payload['idpt'][str(x['icpsr'])] or [0.0, 0.0])
-                    for x in dat['icpsr_chamber_congress']]
+    dat['data'] = [
+        {
+            "votes": np.array(v['votes']),
+            'bp':np.transpose(np.array(v['bp']))
+        }
+        for v in tmp_dct.values()
+    ]
+    dat['icpsr_chamber_congress'] = [
+        dict(zip(
+            ["icpsr", "chamber", "cong", "nvotes"],
+            k.split("_") + [len(v['votes'])]
+        ))
+        for k, v in tmp_dct.iteritems()
+    ]
+    dat['start'] = [
+        (
+            str(x['icpsr']) in payload['idpt']
+            and payload['idpt'][str(x['icpsr'])]
+
+        ) or [0.0, 0.0]
+        for x in dat['icpsr_chamber_congress']
+    ]
     return dat
 
 
