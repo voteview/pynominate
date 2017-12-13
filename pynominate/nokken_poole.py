@@ -4,18 +4,48 @@ from multiprocessing import cpu_count
 from multiprocessing import Pool
 import cPickle as pickle
 
+import json
 import csv
+from pdb import set_trace as st
 
 
 def merge_dicts(x, y, z):
     """
-    Given two dicts, merge them into a new dict as a shallow copy.
+    Given three dicts, merge them into a new dict as a shallow copy.
     See https://stackoverflow.com/questions/38987/how-to-merge-two-dictionaries-in-a-single-expression
     """
     zz = x.copy()
     zz.update(y)
     zz.update(z)
     return zz
+
+
+def make_member_congress_votes(payload):
+    member_chamber_congress_count = 0
+    vote_count = 0
+    tmp_dct = {}
+    for m in payload['memberwise']:
+        for v in m['votes']:
+            vote_count += 1
+            icpsr_chamber_congress = "%i_%s_%s" % (
+                m['icpsr'], v[1][1], v[1][2:5])
+            if icpsr_chamber_congress in tmp_dct:
+                tmp_dct[icpsr_chamber_congress]['votes'].append(v[0])
+                tmp_dct[icpsr_chamber_congress][
+                    'bp'].append(payload['bp'][str(v[1])])
+            else:
+                member_chamber_congress_count += 1
+                tmp_dct[icpsr_chamber_congress] = {
+                    'votes': [v[0]], 'bp': [payload['bp'][str(v[1])]]}
+    dat = {}
+    dat['data'] = [{"votes": np.array(v['votes']),
+                    'bp':np.transpose(np.array(v['bp']))}
+                   for v in tmp_dct.values()]
+    dat['icpsr_chamber_congress'] = [dict(zip(["icpsr", "chamber", "cong", "nvotes"],
+                                              (k.split("_") + [len(v['votes'])]))) for k, v in tmp_dct.iteritems()]
+    dat['start'] = [(str(x['icpsr']) in payload['idpt'] and payload['idpt'][str(x['icpsr'])] or [0.0, 0.0])
+                    for x in dat['icpsr_chamber_congress']]
+    return dat
 
 
 def member_congress_votes(payload):
@@ -81,10 +111,10 @@ def nokken_poole(payload, cores=int(cpu_count()), xtol=1e-4, add_meta=['members'
     return res_idpt
 
 
-def np_write_csv(res, filen="nokken_poole.csv"):
+def np_write_csv(res, file_object):
     fields = ['icpsr', 'chamber', 'cong', 'nvotes',
               'startx', 'x', 'llstart', 'llend']
-    csvout = csv.writer(open(filen, 'wb'))
+    csvout = csv.writer(file_object)
     csvout.writerow(['icpsr', 'chamber', 'cong', 'nvotes', 'dwnom1', 'dwnom2',
                      'np1', 'np2', 'dw_ll', 'np_ll'])
     for r in sorted(res, key=lambda k: (k['icpsr'], k['cong'])):
@@ -102,6 +132,7 @@ def np_write_csv(res, filen="nokken_poole.csv"):
 if __name__ == "__main__":
     from pprint import pprint
     print "Testing Nokken-Poole...\n"
-    payload = pickle.load(open("../../nokken-poole/test_payload.pkl", "rb"))
+    payload = json.load(open("pynominate/tests/data/payload.json"))
     result = nokken_poole(payload, cores=1)
-    np_write_csv(result)
+    np_write_csv(result, open(
+        'pynominate/tests/data/nokken_poole_out.csv', 'w'))
