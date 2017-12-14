@@ -60,7 +60,7 @@ def test_make_member_congress_votes(payload):
 def test_nokken_poole_json_to_csv(payload, nokken_poole_output_file):
     output_file = StringIO.StringIO()
     estimates = nokken_poole.nokken_poole(payload)
-    nokken_poole.np_write_csv(estimates, output_file)
+    nokken_poole.write_csv(estimates, output_file)
     expected = set(line.strip() for line in nokken_poole_output_file if line)
     result = set(line for line in output_file.getvalue().split('\r\n') if line)
     assert result == expected

@@ -42,21 +42,21 @@ def make_member_to_votes_and_bill_parameters(payload):
 
 
 def make_member_congress_votes(payload):
-    tmp_dct = make_member_to_votes_and_bill_parameters(payload)
+    member_dict = make_member_to_votes_and_bill_parameters(payload)
     dat = {}
     dat['data'] = [
         {
             "votes": np.array(v['votes']),
             'bp':np.transpose(np.array(v['bp']))
         }
-        for v in tmp_dct.values()
+        for v in member_dict.values()
     ]
     dat['icpsr_chamber_congress'] = [
         dict(zip(
             ["icpsr", "chamber", "cong", "nvotes"],
             k.split("_") + [len(v['votes'])]
         ))
-        for k, v in tmp_dct.iteritems()
+        for k, v in member_dict.iteritems()
     ]
     dat['start'] = [
         (
@@ -97,7 +97,7 @@ def member_congress_votes(payload):
     return dat
 
 
-def nokken_poole(payload, cores=int(cpu_count()), xtol=1e-4, add_meta=['members', 'rollcalls']):
+def nokken_poole(payload, cores=int(cpu_count()) - 1, xtol=1e-4, add_meta=['members', 'rollcalls']):
     import time
 
     OPTIONS['xtol'] = xtol
@@ -132,7 +132,7 @@ def nokken_poole(payload, cores=int(cpu_count()), xtol=1e-4, add_meta=['members'
     return res_idpt
 
 
-def np_write_csv(res, file_object):
+def write_csv(res, file_object):
     fields = ['icpsr', 'chamber', 'cong', 'nvotes',
               'startx', 'x', 'llstart', 'llend']
     csvout = csv.writer(file_object)
@@ -155,5 +155,5 @@ if __name__ == "__main__":
     print "Testing Nokken-Poole...\n"
     payload = json.load(open("pynominate/tests/data/payload.json"))
     result = nokken_poole(payload, cores=1)
-    np_write_csv(result, open(
+    write_csv(result, open(
         'pynominate/tests/data/nokken_poole_out.csv', 'w'))
