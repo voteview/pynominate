@@ -123,12 +123,21 @@ def nokken_poole(payload, cores=int(cpu_count()) - 1, xtol=1e-4, add_meta=['memb
     dat = member_congress_votes(payload)
     print "(001) Data marshal took %2.2f seconds (%i members)..." % (time.time() - starttime, len(dat['start']))
     # Run dwnominate...
-    res_idpt = mymap(update_idpt_star, zip(
-        dat['data'], [w] * len(dat['data']), [b] * len(dat['data']), dat['start']))
+    res_idpt = mymap(
+        update_idpt_star,
+        zip(
+            dat['data'], [w] * len(dat['data']),
+            [b] * len(dat['data']), dat['start']
+        )
+    )
 
     print "(002) Total update time elapsed %5.2f minutes." % ((time.time() - firststarttime) / 60)
-    res_idpt = [merge_dicts(r, s, {'startx': t}) for r, s, t in zip(
-        res_idpt, dat['icpsr_chamber_congress'], dat['start'])]
+    res_idpt = [
+        merge_dicts(r, s, {'startx': t})
+        for r, s, t in zip(
+            res_idpt, dat['icpsr_chamber_congress'], dat['start']
+        )
+    ]
     return res_idpt
 
 
