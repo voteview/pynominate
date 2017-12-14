@@ -19,7 +19,7 @@ def payload():
 
 @pytest.fixture
 def nokken_poole_output_file():
-    with open('pynominate/tests/data/nokken_poole.csv') as f:
+    with open('pynominate/tests/data/nokken_poole_out.csv') as f:
         data = f.readlines()
     return data
 
@@ -57,10 +57,10 @@ def test_make_member_congress_votes(payload):
     np.testing.assert_equal(result, expected)
 
 
-@pytest.mark.skip
-def test_integration_to_file(payload, nokken_poole_output_file):
+def test_nokken_poole_json_to_csv(payload, nokken_poole_output_file):
     output_file = StringIO.StringIO()
     estimates = nokken_poole.nokken_poole(payload)
-
     nokken_poole.np_write_csv(estimates, output_file)
-    assert output_file.readlines() == nokken_poole_output_file
+    expected = set(line.strip() for line in nokken_poole_output_file if line)
+    result = set(line for line in output_file.getvalue().split('\r\n') if line)
+    assert result == expected
