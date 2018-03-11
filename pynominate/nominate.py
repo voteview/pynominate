@@ -1,13 +1,14 @@
 #!/usr/bin/python
-import sys
+import sys, os
 import json
 import numpy as np
+import copy
 from scipy.optimize import minimize
 from scipy.stats import logistic, norm
 import urllib
 from multiprocessing import cpu_count
 from multiprocessing import Pool
-
+from pprint import pprint
 
 def cons(x):
     return 1 - (x[0] * x[0] + x[1] * x[1])
@@ -20,23 +21,21 @@ METHODWB = METHOD
 OPTIONSWB = OPTIONS
 CONSTRAINTSWB = None
 
+NCORES = int(cpu_count() - 1)
 
 def pr_yea(bp, x, w, b):
     pr_y = norm.cdf(dwnominate_Uy(bp, x, w, b) - dwnominate_Un(bp, x, w, b))
     return pr_y
-
 
 def dwnominate_Uy(bp, x, w, b):
     Uy = b * (np.exp(-((x[0] - bp[0] + bp[2])**2 +
                        w * w * (x[1] - bp[1] + bp[3])**2)))
     return Uy
 
-
 def dwnominate_Un(bp, x, w, b):
     Un = b * (np.exp(-((x[0] - bp[0] - bp[2])**2 +
                        w * w * (x[1] - bp[1] - bp[3])**2)))
     return Un
-
 
 def dwnominate_ll(bp, x, v, w, b):
     """Generic DW-NOMINATE log likelihood"""
@@ -229,7 +228,50 @@ def add_member_meta(payload, ret, by_congress=True):
     return ret
 
 
-def update_nominate(payload, maxiter=20, cores=int(cpu_count() - 1), update=['bp', 'idpt', 'bw'], xtol=1e-4, add_meta=['members', 'rollcalls']):
+def add_prs(payload):
+    for i, m in enumerate(payload['memberwise']):
+        for ii, v in enumerate(m['votes']):
+            p = pr_yea(payload['bp'][v[1]], payload['idpt'][str(m['icpsr'])], payload['bw']['w'], payload['bw']['b'])
+            v += [p]
+            payload['memberwise'][i]['votes'][ii] = v
+    return(payload)
+
+def draw_votes(memberlist):
+    for i, m in enumerate(memberlist):
+        for ii, v in enumerate(m['votes']):
+            memberlist[i]['votes'][ii][0] = 2 * np.random.binomial(1, v[2]) - 1
+    return(memberlist)
+    
+
+def bootstrap(payload, idpts, its, nomiter):
+    del payload['votes']
+    res_idpt = {}
+    for i in xrange(its):
+        print("BOOTSTRAP i: ", i)
+        payload['memberwise'] = draw_votes(payload['memberwise'])
+        payload['idpt'] = copy.deepcopy(idpts)
+        res = update_nominate(payload, maxiter=nomiter, update='idpt', add_meta=[])
+        if i == 0:
+            for icpsr, m in res['idpt'].iteritems():
+                res_idpt[str(icpsr)] = [list(m['idpt'])]
+        else:
+            for icpsr, m in res['idpt'].iteritems():
+                res_idpt[str(icpsr)] += [list(m['idpt'])]
+    return(res_idpt)
+
+def get_ses(res, idpts = None):
+    ses = {}
+    for icpsr, m in res.iteritems():
+        # If no idpts passed, use mean of bootstrapped idpts
+        if idpts is not None:
+            idptest = np.array(idpts[str(icpsr)])
+        else:
+            idptest = np.array(m).mean(0)
+        se = np.sqrt(np.square(np.array(m) -  idptest).sum(0) / (len(m)-1))
+        ses[str(icpsr)] = list(se)
+    return(ses)
+
+def update_nominate(payload, maxiter=20, update=['bp', 'idpt', 'bw'], xtol=1e-4, add_meta=['members', 'rollcalls']):
     import time
 
     OPTIONS['xtol'] = xtol
@@ -242,7 +284,7 @@ def update_nominate(payload, maxiter=20, cores=int(cpu_count() - 1), update=['bp
         print "Payload missing 'memberwise'! Cannot update ideal points, quitting."
         sys.exit(1)
 
-    print "(000) Running DW-NOMINATE on %i cores..." % cores
+    print "(000) Running DW-NOMINATE on %i cores..." % NCORES
     firststarttime = time.time()
 
     if 'votes' in payload:
@@ -251,15 +293,16 @@ def update_nominate(payload, maxiter=20, cores=int(cpu_count() - 1), update=['bp
         print "(000) %i total vote choices observed..." % nchoices
 
     # Run dwnominate...
-    pool = Pool(cores)
-    mymap = pool.map  # allow switching to in/out parallel processing for debugging
-
+    mymap = POOL.map  # allow switching to in/out parallel processing for debugging
+    #mymap = map
+    
     if 'bw' in payload:
         b = payload['bw']['b']
         w = payload['bw']['w']
     else:
         b = 8.8633
         w = 0.4619
+
     iter = 0
     while iter < maxiter:
         # Update roll call parameters...
@@ -287,7 +330,7 @@ def update_nominate(payload, maxiter=20, cores=int(cpu_count() - 1), update=['bp
                     'bp':np.transpose(np.array([payload['bp'][str(xx[1])]
                                                 for xx in payload['memberwise'][i]['votes']]))}
                    for i in range(len(payload['memberwise'])) if payload['memberwise'][i]['update']]
-            start = [payload['idpt'][v['icpsr']]
+            start = [payload['idpt'][str(v['icpsr'])]
                      for v in payload['memberwise'] if v['update']]
             print "(%03i) Member/BW update data marshal took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
 
@@ -296,7 +339,7 @@ def update_nominate(payload, maxiter=20, cores=int(cpu_count() - 1), update=['bp
                 dat, [w] * len(dat), [b] * len(dat), start))
             for i, v in enumerate(payload['memberwise']):
                 if v['update']:
-                    payload['idpt'][v['icpsr']] = res_idpt[i]['x']
+                    payload['idpt'][str(v['icpsr'])] = res_idpt[i]['x']
             print "(%03i) Member update took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
             print "\t\t Ideal Point[0] = " + str(res_idpt[0]['x'])
 
@@ -319,7 +362,7 @@ def update_nominate(payload, maxiter=20, cores=int(cpu_count() - 1), update=['bp
                        'time': round((time.time() - firststarttime) / 60, 3),
                        'method': METHOD,
                        'options': OPTIONS,
-                       'cores': cores}}
+                       'cores': NCORES}}
     if 'bp' in update:
         ret_bp = {}
         for i, v in enumerate(payload['votes']):
@@ -354,3 +397,5 @@ def update_nominate(payload, maxiter=20, cores=int(cpu_count() - 1), update=['bp
 
 if __name__ == '__main__':
     print('Running pynominate')
+    
+POOL = Pool(NCORES)
