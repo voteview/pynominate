@@ -1,12 +1,15 @@
-from pynominate.nominate import update_idpt_star, OPTIONS, OPTIONSWB
-import numpy as np
+import json
+import csv
+import multiprocessing
 from multiprocessing import cpu_count
 from multiprocessing import Pool
 import cPickle as pickle
 
-import json
-import csv
-from pdb import set_trace as st
+
+import numpy as np
+
+
+from pynominate import nominate
 
 
 def merge_dicts(x, y, z):
@@ -97,17 +100,17 @@ def member_congress_votes(payload):
     return dat
 
 
-def nokken_poole(payload, cores=int(cpu_count()) - 1, xtol=1e-4, add_meta=['members', 'rollcalls']):
+def nokken_poole(payload, cores=int(multiprocessing.cpu_count()) - 1, xtol=1e-4, add_meta=['members', 'rollcalls']):
     import time
 
-    OPTIONS['xtol'] = xtol
-    OPTIONSWB['xtol'] = xtol
+    nominate.OPTIONS['xtol'] = xtol
+    nominate.OPTIONSWB['xtol'] = xtol
 
     print "(000) Running Nokken-Poole on %i cores..." % cores
     firststarttime = time.time()
 
     if cores >= 2:
-        pool = Pool(cores)
+        pool = multiprocessing.Pool(cores)
         mymap = pool.map  # allow switching to in/out parallel processing for  debugging
     else:
         mymap = map
@@ -124,7 +127,7 @@ def nokken_poole(payload, cores=int(cpu_count()) - 1, xtol=1e-4, add_meta=['memb
     print "(001) Data marshal took %2.2f seconds (%i members)..." % (time.time() - starttime, len(dat['start']))
     # Run dwnominate...
     res_idpt = mymap(
-        update_idpt_star,
+        nominate.update_idpt_star,
         zip(
             dat['data'], [w] * len(dat['data']),
             [b] * len(dat['data']), dat['start']

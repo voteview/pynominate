@@ -10,15 +10,15 @@ from pdb import set_trace as st
 from pynominate import nokken_poole
 
 
-@pytest.fixture
-def payload():
+@pytest.fixture(name='payload')
+def _payload():
     with open('pynominate/tests/data/payload.json') as f:
         data = json.load(f)
     return data
 
 
-@pytest.fixture
-def nokken_poole_output_file():
+@pytest.fixture(name='nokken_poole_output_file')
+def _nokken_poole_output_file():
     with open('pynominate/tests/data/nokken_poole_out.csv') as f:
         data = f.readlines()
     return data
