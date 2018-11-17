@@ -1,27 +1,133 @@
-import csv
 import json
+import deepdiff
 import StringIO
 import numpy as np
-
+import copy
 
 import pytest
-from pdb import set_trace as st
 
 from pynominate import nokken_poole
 
 
 @pytest.fixture
-def payload():
-    with open('pynominate/tests/data/payload.json') as f:
-        data = json.load(f)
-    return data
+def int_payload():
+    payload = {}
+    payload["memberwise"] = [
+        {"icpsr": 1,
+         "update": 1,
+         "votes": [[1, "MH1150001"], [-1, "MH1150002"]]},
+        {"icpsr": 2,
+         "update": 1,
+         "votes": [[-1, "MH1150001"], [1, "MH1150002"]]},
+    ]
+
+    payload["idpt"] = {
+        1: [-0.5, -0.5],
+        2: [0.5, 0.5],
+    }
+
+    payload["bp"] = {
+        "MH1150001": [0.02, -0.02, -0.8, -0.5],
+        "MH1150002": [-0.02, 0.02, 0.8, 0.5],
+    }
+    return payload
 
 
 @pytest.fixture
-def nokken_poole_output_file():
-    with open('pynominate/tests/data/nokken_poole_out.csv') as f:
-        data = f.readlines()
-    return data
+def broken_payload(int_payload):
+    """broken_payload has inconsistent icpsr types in "idpt" and "memberwise" keys"""
+    broken_payload = copy.deepcopy(int_payload)
+    broken_payload["idpt"] = {
+        str(k): v for k, v in broken_payload["idpt"].iteritems()
+    }
+    return broken_payload
+
+
+@pytest.fixture
+def str_payload(broken_payload):
+    """fixes broken_payload by making memberwise icpsrs also strings"""
+    str_payload = copy.deepcopy(broken_payload)
+    str_payload["memberwise"] = [
+        {k: str(v) if k == "icpsr" else v for k, v in m.iteritems()}
+        for m in str_payload["memberwise"]
+    ]
+    return str_payload
+
+
+def test_broken_payload_breaks(broken_payload):
+    with pytest.raises(KeyError):
+        nokken_poole.nokken_poole(broken_payload)
+
+
+def test_make_member_congress_votes(int_payload, str_payload):
+    for payload_type, payload in {"int": int_payload, "str": str_payload}.iteritems():
+        expected_bp = np.transpose(np.array([
+            [0.02, -0.02, -0.8, -0.5],
+            [-0.02, 0.02, 0.8, 0.5],
+        ]))
+        expected_dat = {
+            "data": [
+                {"votes": np.array([1, -1]), "bp": expected_bp},
+                {"votes": np.array([-1, 1]), "bp": expected_bp},
+            ],
+            "start": [[-0.5, -0.5], [0.5, 0.5]],
+            "icpsr_chamber_congress": [
+                {
+                    "icpsr": 1 if payload_type == "int" else "1",
+                    "chamber": "H",
+                    "cong": "115",
+                    "nvotes": 2,
+                },
+                {
+                    "icpsr": 2 if payload_type == "int" else "2",
+                    "chamber": "H",
+                    "cong": "115",
+                    "nvotes": 2,
+                },
+            ]
+        }
+
+        dat = nokken_poole.make_member_congress_votes(payload)
+
+        for k, v in dat.iteritems():
+            if k == "data":
+                for i, data in enumerate(v):
+                    np.testing.assert_array_equal(data["votes"], expected_dat["data"][i]["votes"])
+                    np.testing.assert_array_equal(data["bp"], expected_dat["data"][i]["bp"])
+            else:
+                assert dat[k] == expected_dat[k]
+              
+
+def test_nokken_poole_member_estimate(int_payload, str_payload):
+    for payload_type, payload in {"int": int_payload, "str": str_payload}.iteritems():
+        member_estimates = nokken_poole.nokken_poole(payload)
+
+        expected = [
+            {
+                'chamber': 'H',
+                'startx': [-0.5, -0.5],
+                'nvotes': 2,
+                'icpsr': 1 if payload_type == "int" else "1",
+                'cong': u'115',
+                u'x': [0.8661656699495177, 0.4997562405655863],
+                u'llend': 5.580493176682049e-17,
+                u'llstart': 51.63337903006439,
+            },
+            {
+                'chamber': 'H',
+                'startx': [0.5, 0.5],
+                'nvotes': 2,
+                'icpsr': 2 if payload_type == "int" else "2",
+                'cong': u'115',
+                u'x': [-0.8661656699495177, -0.4997562405655863],
+                u'llend': 5.580493176682049e-17,
+                u'llstart': 51.63337903006439,
+            }
+        ]
+        
+        for i, member in enumerate(member_estimates):
+            np.testing.assert_array_equal(member.pop("x"), expected[i].pop("x"))
+            assert member == expected[i]
 
 
 def test_merge_dicts():
@@ -30,37 +136,4 @@ def test_merge_dicts():
     third = {'e': 5, 'f': 6}
     expected = {'a': 1, 'b': 2, 'c': 3, 'd': 4, 'e': 5, 'f': 6}
     result = nokken_poole.merge_dicts(first, second, third)
-    assert result == expected
-
-
-def test_nokken_poole_member_estimate(payload):
-    member_estimates = nokken_poole.nokken_poole(payload)
-    member_estimate = member_estimates[0]
-    expected = {
-        'chamber': u'S',
-        'startx': [0.323, -0.183],
-        'nvotes': 607,
-        'icpsr': u'40304',
-        'cong': u'111',
-        u'x': np.array([0.28298301516582103, -0.23682349897588367]),
-        u'llend': 151.01943582140623,
-        u'llstart': 157.2711841651132,
-    }
-    member_estimate[u'x'] = member_estimate[u'x'].tolist()
-    expected[u'x'] = expected[u'x'].tolist()
-    assert member_estimate == expected
-
-
-def test_make_member_congress_votes(payload):
-    result = nokken_poole.make_member_congress_votes(payload)
-    expected = nokken_poole.member_congress_votes(payload)
-    np.testing.assert_equal(result, expected)
-
-
-def test_nokken_poole_json_to_csv(payload, nokken_poole_output_file):
-    output_file = StringIO.StringIO()
-    estimates = nokken_poole.nokken_poole(payload)
-    nokken_poole.write_csv(estimates, output_file)
-    expected = set(line.strip() for line in nokken_poole_output_file if line)
-    result = set(line for line in output_file.getvalue().split('\r\n') if line)
     assert result == expected

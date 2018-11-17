@@ -1,5 +1,6 @@
 from pynominate.nominate import update_idpt_star, OPTIONS, OPTIONSWB
 import numpy as np
+
 from multiprocessing import cpu_count
 from multiprocessing import Pool
 
@@ -29,7 +30,7 @@ def make_member_to_votes_and_bill_parameters(payload):
             if m['icpsr'] not in tmp_dct:
                 tmp_dct[m['icpsr']] = {}
             
-            if chamber_congress in tmp_dct:
+            if chamber_congress in tmp_dct[m['icpsr']]:
                 tmp_dct[m['icpsr']][chamber_congress]['votes'].append(v[0])
                 tmp_dct[m['icpsr']][chamber_congress]['bp'].append(payload['bp'][str(v[1])])
             else:
@@ -38,6 +39,7 @@ def make_member_to_votes_and_bill_parameters(payload):
                     'votes': [v[0]],
                     'bp': [payload['bp'][str(v[1])]],
                 }
+    
     return tmp_dct
 
 
@@ -48,12 +50,13 @@ def make_member_congress_votes(payload):
         'icpsr_chamber_congress': [],
         'start': []
     }
+
     for icpsr, chamber_cong_dict in icpsr_dict.iteritems():
 
         dat['data'] += [
             {
                 "votes": np.array(v['votes']),
-                'bp':np.transpose(np.array(v['bp']))
+                'bp': np.transpose(np.array(v['bp']))
             }
             for v in chamber_cong_dict.values()
         ]
@@ -134,11 +137,4 @@ def write_csv(res, file_object):
 
 
 if __name__ == "__main__":
-    # Note: will not work because in .json the keys in the idpt collection
-    # and the idpt values in the memberwise collection are of different types!
-    from pprint import pprint
-    print "Testing Nokken-Poole...\n"
-    payload = json.load(open("pynominate/tests/data/payload.json"))
-    result = nokken_poole(payload, cores=1)
-    write_csv(result, open(
-        'pynominate/tests/data/nokken_poole_out.csv', 'w'))
+    print("nokken_poole.py does nothing on its own")
