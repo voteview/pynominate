@@ -4,7 +4,6 @@ import numpy as np
 from multiprocessing import cpu_count
 from multiprocessing import Pool
 
-import json
 import csv
 
 

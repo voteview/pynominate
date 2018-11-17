@@ -1,16 +1,17 @@
 #!/usr/bin/python
 import sys
-import json
+
 import numpy as np
 from scipy.optimize import minimize
-from scipy.stats import logistic, norm
-import urllib
+from scipy.stats import norm
+
 from multiprocessing import cpu_count
 from multiprocessing import Pool
 
 
 def cons(x):
     return 1 - (x[0] * x[0] + x[1] * x[1])
+
 
 METHOD = 'Nelder-Mead'
 OPTIONS = {'xtol': 1e-4, 'disp': False}
