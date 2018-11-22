@@ -1,10 +1,10 @@
-from pynominate.nominate import update_idpt_star, OPTIONS, OPTIONSWB
-import numpy as np
-
+import csv
 from multiprocessing import cpu_count
 from multiprocessing import Pool
 
-import csv
+import numpy as np
+
+from pynominate.nominate import update_idpt_star, OPTIONS, OPTIONSWB
 
 
 def merge_dicts(x, y, z):
@@ -20,26 +20,30 @@ def merge_dicts(x, y, z):
 
 def make_member_to_votes_and_bill_parameters(payload):
     member_chamber_congress_count = 0
-    tmp_dct = {}
+    vote_bp_collections = {}
     for m in payload['memberwise']:
         for v in m['votes']:
             chamber_congress = "%s_%s" % (
                 v[1][1], v[1][2:5]
             )
-            if m['icpsr'] not in tmp_dct:
-                tmp_dct[m['icpsr']] = {}
+            if m['icpsr'] not in vote_bp_collections:
+                vote_bp_collections[m['icpsr']] = {}
             
-            if chamber_congress in tmp_dct[m['icpsr']]:
-                tmp_dct[m['icpsr']][chamber_congress]['votes'].append(v[0])
-                tmp_dct[m['icpsr']][chamber_congress]['bp'].append(payload['bp'][str(v[1])])
+            if chamber_congress in vote_bp_collections[m['icpsr']]:
+                vote_bp_collections[m['icpsr']][chamber_congress]['votes'].append(
+                    v[0]
+                )
+                vote_bp_collections[m['icpsr']][chamber_congress]['bp'].append(
+                    payload['bp'][str(v[1])]
+                )
             else:
                 member_chamber_congress_count += 1
-                tmp_dct[m['icpsr']][chamber_congress] = {
+                vote_bp_collections[m['icpsr']][chamber_congress] = {
                     'votes': [v[0]],
                     'bp': [payload['bp'][str(v[1])]],
                 }
     
-    return tmp_dct
+    return vote_bp_collections
 
 
 def make_member_congress_votes(payload):
@@ -133,7 +137,3 @@ def write_csv(res, file_object):
                 record.append(
                     type(r[f]) is np.float64 and round(r[f], 3) or r[f])
         csvout.writerow(record)
-
-
-if __name__ == "__main__":
-    print("nokken_poole.py does nothing on its own")
