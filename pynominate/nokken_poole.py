@@ -1,4 +1,5 @@
 import csv
+import collections
 from multiprocessing import cpu_count
 from multiprocessing import Pool
 
@@ -20,14 +21,12 @@ def merge_dicts(x, y, z):
 
 def make_member_to_votes_and_bill_parameters(payload):
     member_chamber_congress_count = 0
-    vote_bp_collections = {}
+    vote_bp_collections = collections.defaultdict(dict)
     for m in payload['memberwise']:
         for v in m['votes']:
             chamber_congress = "%s_%s" % (
                 v[1][1], v[1][2:5]
             )
-            if m['icpsr'] not in vote_bp_collections:
-                vote_bp_collections[m['icpsr']] = {}
             
             if chamber_congress in vote_bp_collections[m['icpsr']]:
                 vote_bp_collections[m['icpsr']][chamber_congress]['votes'].append(
