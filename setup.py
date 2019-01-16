@@ -9,6 +9,7 @@ setup(
     url='https://github.com/voteview/pynominate',
     packages=['pynominate', ],
     include_package_data=True,
+    install_requires=["scikit-learn"],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
 )
