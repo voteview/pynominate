@@ -1,12 +1,11 @@
-from pynominate.nominate import update_idpt_star, OPTIONS, OPTIONSWB
-import numpy as np
+import csv
+import collections
 from multiprocessing import cpu_count
 from multiprocessing import Pool
-import cPickle as pickle
 
-import json
-import csv
-from pdb import set_trace as st
+import numpy as np
+
+from pynominate.nominate import update_idpt_star, OPTIONS, OPTIONSWB
 
 
 def merge_dicts(x, y, z):
@@ -22,78 +21,58 @@ def merge_dicts(x, y, z):
 
 def make_member_to_votes_and_bill_parameters(payload):
     member_chamber_congress_count = 0
-    tmp_dct = {}
+    vote_bp_collections = collections.defaultdict(dict)
     for m in payload['memberwise']:
         for v in m['votes']:
-            icpsr_chamber_congress = "%i_%s_%s" % (
-                m['icpsr'], v[1][1], v[1][2:5]
+            chamber_congress = "%s_%s" % (
+                v[1][1], v[1][2:5]
             )
-            if icpsr_chamber_congress in tmp_dct:
-                tmp_dct[icpsr_chamber_congress]['votes'].append(v[0])
-                tmp_dct[icpsr_chamber_congress][
-                    'bp'].append(payload['bp'][str(v[1])])
+            
+            if chamber_congress in vote_bp_collections[m['icpsr']]:
+                vote_bp_collections[m['icpsr']][chamber_congress]['votes'].append(
+                    v[0]
+                )
+                vote_bp_collections[m['icpsr']][chamber_congress]['bp'].append(
+                    payload['bp'][str(v[1])]
+                )
             else:
                 member_chamber_congress_count += 1
-                tmp_dct[icpsr_chamber_congress] = {
+                vote_bp_collections[m['icpsr']][chamber_congress] = {
                     'votes': [v[0]],
                     'bp': [payload['bp'][str(v[1])]],
                 }
-    return tmp_dct
+    
+    return vote_bp_collections
 
 
 def make_member_congress_votes(payload):
-    member_dict = make_member_to_votes_and_bill_parameters(payload)
-    dat = {}
-    dat['data'] = [
-        {
-            "votes": np.array(v['votes']),
-            'bp':np.transpose(np.array(v['bp']))
-        }
-        for v in member_dict.values()
-    ]
-    dat['icpsr_chamber_congress'] = [
-        dict(zip(
-            ["icpsr", "chamber", "cong", "nvotes"],
-            k.split("_") + [len(v['votes'])]
-        ))
-        for k, v in member_dict.iteritems()
-    ]
-    dat['start'] = [
-        (
-            str(x['icpsr']) in payload['idpt']
-            and payload['idpt'][str(x['icpsr'])]
+    icpsr_dict = make_member_to_votes_and_bill_parameters(payload)
+    dat = {
+        'data': [],
+        'icpsr_chamber_congress': [],
+        'start': []
+    }
 
-        ) or [0.0, 0.0]
-        for x in dat['icpsr_chamber_congress']
-    ]
-    return dat
+    for icpsr, chamber_cong_dict in icpsr_dict.iteritems():
 
+        dat['data'] += [
+            {
+                "votes": np.array(v['votes']),
+                'bp': np.transpose(np.array(v['bp']))
+            }
+            for v in chamber_cong_dict.values()
+        ]
 
-def member_congress_votes(payload):
-    member_chamber_congress_count = 0
-    vote_count = 0
-    tmp_dct = {}
-    for m in payload['memberwise']:
-        for v in m['votes']:
-            vote_count += 1
-            icpsr_chamber_congress = "%i_%s_%s" % (
-                m['icpsr'], v[1][1], v[1][2:5])
-            if icpsr_chamber_congress in tmp_dct:
-                tmp_dct[icpsr_chamber_congress]['votes'].append(v[0])
-                tmp_dct[icpsr_chamber_congress][
-                    'bp'].append(payload['bp'][str(v[1])])
-            else:
-                member_chamber_congress_count += 1
-                tmp_dct[icpsr_chamber_congress] = {
-                    'votes': [v[0]], 'bp': [payload['bp'][str(v[1])]]}
-    dat = {}
-    dat['data'] = [{"votes": np.array(v['votes']),
-                    'bp':np.transpose(np.array(v['bp']))}
-                   for v in tmp_dct.values()]
-    dat['icpsr_chamber_congress'] = [dict(zip(["icpsr", "chamber", "cong", "nvotes"],
-                                              (k.split("_") + [len(v['votes'])]))) for k, v in tmp_dct.iteritems()]
-    dat['start'] = [(str(x['icpsr']) in payload['idpt'] and payload['idpt'][str(x['icpsr'])] or [0.0, 0.0])
-                    for x in dat['icpsr_chamber_congress']]
+        dat['start'] += [payload['idpt'][icpsr]] * len(chamber_cong_dict)
+
+        dat['icpsr_chamber_congress'] += [
+            dict(zip(
+                ["icpsr", "chamber", "cong", "nvotes"],
+                [icpsr] + k.split("_") + [len(v['votes'])]
+            ))
+            for k, v in chamber_cong_dict.iteritems()
+        ]
+    
     return dat
 
 
@@ -120,7 +99,7 @@ def nokken_poole(payload, cores=int(cpu_count()) - 1, xtol=1e-4, add_meta=['memb
         w = 0.4619
     starttime = time.time()
 
-    dat = member_congress_votes(payload)
+    dat = make_member_congress_votes(payload)
     print "(001) Data marshal took %2.2f seconds (%i members)..." % (time.time() - starttime, len(dat['start']))
     # Run dwnominate...
     res_idpt = mymap(
@@ -157,12 +136,3 @@ def write_csv(res, file_object):
                 record.append(
                     type(r[f]) is np.float64 and round(r[f], 3) or r[f])
         csvout.writerow(record)
-
-
-if __name__ == "__main__":
-    from pprint import pprint
-    print "Testing Nokken-Poole...\n"
-    payload = json.load(open("pynominate/tests/data/payload.json"))
-    result = nokken_poole(payload, cores=1)
-    write_csv(result, open(
-        'pynominate/tests/data/nokken_poole_out.csv', 'w'))
