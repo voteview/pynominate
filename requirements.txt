@@ -2,3 +2,5 @@ numpy
 pytest
 scipy
 pandas
+sklearn
+matplotlib
