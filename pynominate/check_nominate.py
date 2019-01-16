@@ -1,20 +1,25 @@
 import pandas as pd
 import numpy as np
-import scipy as sp
 from sklearn import linear_model
 import matplotlib.pyplot as plt
 
 
 class idpt_dataframe(object):
 
-    def __init__(self, payload, ret, icpsrs = None):
-        cols = ['start_dim1', 'start_dim2', 'end_dim1', 'end_dim2', 'euclidean_dist', "dist_dim1", "dist_dim2"]
+    def __init__(self, payload, ret, icpsrs=None):
+        cols = [
+            "start_dim1",
+            "start_dim2",
+            "end_dim1",
+            "end_dim2",
+            "euclidean_dist",
+            "dist_dim1",
+            "dist_dim2"
+        ]
         if icpsrs:
-            self.df = pd.DataFrame(index = icpsrs,
-                                   columns = cols)
+            self.df = pd.DataFrame(index=icpsrs, columns=cols)
         else:
-            self.df = pd.DataFrame(index = ret['idpt'].keys(),
-                                   columns = cols)
+            self.df = pd.DataFrame(index=ret['idpt'].keys(), columns=cols)
 
         for i in self.df.index.values:
             start = payload['idpt'][i]
@@ -39,15 +44,15 @@ class idpt_dataframe(object):
         )
         return reg.coef_
 
-    def plot_dim_changes(self, dim = 1):
+    def plot_dim_changes(self, dim=1):
         plt.plot(self.df["start_dim" + str(dim)], self.df["end_dim" + str(dim)], "o")
-        plt.plot([-1, 1], [-1, 1], "k-", lw = 0.5)
+        plt.plot([-1, 1], [-1, 1], "k-", lw=0.5)
         plt.xlabel("Start Dim " + str(dim))
         plt.ylabel("End Dim " + str(dim))
         plt.show()
         return None
         
-    def plot_distance_histograms(self, n_bins = 20):
+    def plot_distance_histograms(self, n_bins=20):
         fig, axs = plt.subplots(1, 3)
         axs[0].hist(self.df["dist_dim1"].values, bins=n_bins)
         axs[1].hist(self.df["dist_dim2"].values, bins=n_bins)
@@ -57,6 +62,6 @@ class idpt_dataframe(object):
         axs[2].set_xlabel("Euclidean Dist.")
         return None
     
-    def top_movers(self, measure = "euclidean_dist", n = 10):
+    def top_movers(self, measure="euclidean_dist", n=10):
         return self.df.sort_values(measure, ascending=False).head(n)
         
