@@ -1,3 +1,5 @@
+from pprint import pprint
+
 # Methods to prepare payloads for dynamic estimation
 def add_congresswise(payload, min_congresses=0):
     """Modifies the 'idpt' collection of the payload to have a slot for an idpt per session and adds time to the votes collection"""
@@ -16,19 +18,15 @@ def add_congresswise(payload, min_congresses=0):
                 min_cong = congress
             if congress > max_cong:
                 max_cong = congress
-            if icpsr in tmp_idpt:
-                if str(congress) not in member_idpts:
-                    if str(congress) in payload['idpt'][icpsr]:
-                        member_idpts[str(congress)] = payload['idpt'][icpsr][str(congress)]
-                    else:
-                        member_idpts[str(congress)] = [0.0, 0.0]
-                        
-            else:
+            if str(congress) not in member_idpts:
                 if str(congress) in payload['idpt'][icpsr]:
-                    member_idpts = {str(congress): payload['idpt'][icpsr][str(congress)]}
+                    idpt = payload['idpt'][icpsr][str(congress)]
+                elif isinstance(payload['idpt'][icpsr], list):
+                    idpt = payload['idpt'][icpsr]
                 else:
-                    member_idpts = {str(congress): [0.0, 0.0]}
-                    
+                    idpt = [0.0, 0.0]
+                member_idpts[str(congress)] = idpt
+
         tmp_idpt[str(icpsr)] = {
             'min_cong': min_cong,
             'max_cong': max_cong

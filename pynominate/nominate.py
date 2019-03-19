@@ -16,12 +16,10 @@ def cons(x):
     return 1 - (x[0] * x[0] + x[1] * x[1])
 
 
-METHOD = 'Nelder-Mead'
-OPTIONS = {'xtol': 1e-4, 'disp': False}
-CONSTRAINTS = None
+OPTIONS = {}
 
-METHODWB = METHOD
-OPTIONSWB = OPTIONS
+METHODWB = 'Nelder-Mead'
+OPTIONSWB = {'xtol': 1e-4, 'disp': False}
 CONSTRAINTSWB = None
 
 
@@ -155,6 +153,7 @@ def dwnominate_ll(bp, idpts, v, w, b, T):
     """Generic DW-NOMINATE log likelihood"""
     # When updating ideal points...
     if T is not None:
+        #x = np.array([idpts[t] for t in T]).T
         design = (T[:, None] == np.array([range(np.amax(T)+1)])).astype(int)
         x = np.matmul(design, idpts).T
     # When updating votes...
@@ -163,6 +162,11 @@ def dwnominate_ll(bp, idpts, v, w, b, T):
     ll = norm.logcdf(v*(dwnominate_Uy(bp, x, w, b) -
                         dwnominate_Un(bp, x, w, b)))
     return -np.sum(ll)
+
+
+def dwnominate_ll_star(args):
+    """wrapper to call from map"""
+    return dwnominate_ll(*args)
 
 
 def dwnominate_ll_by_t(bp, idpts, v, w, b, T):
@@ -203,12 +207,22 @@ def dwnominate_ll_bp_grad(par, d, w, b):
 #
 # Functions for fixed/constant/single ideal point updates
 #
+def dwnominate_ll_wb_part(d, w, b):
+    bp = d['bp']
+    v = d['votes']
+    idpts = d['ideal']
+    return dwnominate_ll(bp, idpts, v, w, b, None)
+
+
+def dwnominate_ll_wb_part_star(args):
+    return dwnominate_ll_wb_part(*args)
+
+
 def dwnominate_ll_idpt_fixed(idpts, d, w, b):
     """Loglik to be called when updating fixed ideal points."""
     bp = d['bp']
     v = d['votes']
     return dwnominate_ll(bp, idpts, v, w, b, None)
-
 
 def dwnominate_ll_idpt_fixed_grad(idpts, d, w, b):
     """Gradient of the logliklihood used when estimating the
@@ -237,7 +251,7 @@ def dwnominate_spline_penalty_grad(idpts, lambdaval, n=1):
     return 2.0 * lambdaval * np.matmul(np.matmul(DD.T, DD), idpts)
 
 
-def dwnominate_ll_idpt_spline(par, d, w, b, lambdaval, include_penalty=False, by_t=False):
+def dwnominate_ll_idpt_spline(par, d, w, b, lambdaval, include_penalty=True, by_t=False):
     """Loglik to be called when updating ideal points.  Note that
     the penalty is applied here."""
     bp = d['bp']
@@ -293,10 +307,14 @@ def dwnominate_ll_idpt(par, d, w, b, lambdaval=None, fixed=True, penalize_outofb
         return ll_val
 
 
-def dwnominate_ll_wb(par, start, dat, pool):
+def dwnominate_ll_wb(par, dat, pool):
     """Loglik to be called when updating ideal points"""
-    args = zip(start, dat, [par[0]] * len(dat), [par[1]] * len(dat))
-    ll = pool.map(dwnominate_ll_idpt_star, args, chunksize=100)
+    args = zip(
+        dat,
+        [par[0]] * len(dat),
+        [par[1]] * len(dat)
+    )
+    ll = pool.map(dwnominate_ll_wb_part_star, args)
     return sum(ll) + (par[0] < 0 and 1e10 or 0) + (par[1] < 0 and 1e300 or 0)
 
 
@@ -356,11 +374,6 @@ def update_idpt(d, w, b, par0, lambdaval=None, fixed=True, always_spline=False):
 def update_idpt_spline(d, w, b, par0, lambdaval):
     """Update ideal points for a single member"""
     par0 = np.array(par0).flatten()
-#    print(par0)
-#    print(d)
-#    print(w)
-#    print(b)
-#    print(lambdaval)
     llstart = dwnominate_ll_idpt_spline(par0, d, w, b, lambdaval=0)
     resd = minimize(
         fun=dwnominate_ll_idpt_spline,
@@ -432,7 +445,7 @@ def update_idpt_star(args):
     return update_idpt(*args)
 
 
-def update_wb(d, start, w0, b0, pool):
+def update_wb(d, w0, b0, pool):
     """Update w and b parameters"""
     par0 = (w0, b0)
     res = minimize(dwnominate_ll_wb,
@@ -440,7 +453,7 @@ def update_wb(d, start, w0, b0, pool):
                    method=METHODWB,
                    options=OPTIONSWB,
                    constraints=CONSTRAINTSWB,
-                   args=(start, d, pool))
+                   args=(d, pool))
     return {u'llend': res['fun'],
             u'w': res['x'][0],
             u'b': res['x'][1]}
@@ -573,9 +586,12 @@ def update_nominate(
                 {
                     'votes': np.array(tuple(xx[0] for xx in payload['votes'][i]['votes'])),
                     'ideal': np.transpose(np.array([
-                        payload['idpt'][str(xx[1])][str(int(payload['votes'][i]['id'][2:5]))]
-                        if isinstance(payload['idpt'][str(xx[1])], dict)
-                        else payload['idpt'][str(xx[1])]
+                        payload['idpt'][str(xx[1])]['idpts'][
+                            int(payload['votes'][i]['id'][2:5]) -
+                            payload['idpt'][str(xx[1])]['min_cong']
+                        ]
+                        if np.size(payload['idpt'][str(xx[1])]['idpts'], 0) > 1
+                        else payload['idpt'][str(xx[1])]['idpts'][0]
                         for xx in payload['votes'][i]['votes']
                     ]))
                 }
@@ -617,7 +633,7 @@ def update_nominate(
             ]
             # build idpt matrix
             start = [
-                payload['idpt'][v['icpsr']]['idpts']
+                payload['idpt'][str(v['icpsr'])]['idpts']
                 for v in payload['memberwise'] if v['update']
             ]
             print "(%03i) Member/BW update data marshal took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
@@ -636,7 +652,7 @@ def update_nominate(
             )
             for i, v in enumerate(payload['memberwise']):
                 if v['update']:
-                    payload['idpt'][v['icpsr']]['idpts'] = res_idpt[i]['x']
+                    payload['idpt'][str(v['icpsr'])]['idpts'] = res_idpt[i]['x']
 
             print "(%03i) Member update took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
             print "\t\t Ideal Point[0] = " + str(res_idpt[0]['x'])
@@ -644,10 +660,21 @@ def update_nominate(
         # Update b and w
         if 'bw' in update:
             starttime = time.time()
-            start = [payload['idpt'][v['icpsr']]
-                     for v in payload['memberwise']]
+            # Add new ideal points to 'dat' used in ideal point update above
+            for i, mem in enumerate(payload['memberwise']):
+
+                min_cong = payload['idpt'][str(mem['icpsr'])]['min_cong']
+                idpts = payload['idpt'][str(mem['icpsr'])]['idpts']
+                multiple_sessions = np.size(idpts, 0) > 1
+                
+                dat[i]['ideal'] = np.transpose(np.array([
+                    idpts[int(v[1][2:5]) - min_cong]
+                    if multiple_sessions
+                    else idpts[0]
+                    for v in mem['votes']
+                ]))
             print "(%03i) Weight and Beta update data marshal took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
-            res_wb = update_wb(dat, start, w, b, pool)
+            res_wb = update_wb(dat, w, b, pool)
             w, b = res_wb['w'], res_wb['b']
             print "(%03i) Weight and Beta  update took %2.2f seconds..." % (iter + 1, time.time() - starttime)
             print "\t\t w = %7.4f, b = %7.4f" % (w, b)
@@ -658,7 +685,7 @@ def update_nominate(
 
     ret = {'control': {'iterations': iter,
                        'time': round((time.time() - firststarttime) / 60, 3),
-                       'method': METHOD,
+                       'method': 'SLSQP',
                        'options': OPTIONS,
                        'cores': cores}}
     if 'bp' in update:
@@ -676,12 +703,9 @@ def update_nominate(
         ret_idpt = {}
         for i, v in enumerate(payload['memberwise']):
             if v['update']:
-                ret_idpt[v['icpsr']] = {
-                    'idpts': res_idpt[i]['x'],
-                    'cong_range': tuple(
-                        payload['idpt'][v['icpsr']][t + '_cong']
-                        for t in ['min', 'max']
-                    ),
+                ret_idpt[str(v['icpsr'])] = {
+                    'idpts': res_idpt[i]['x'].tolist(),
+                    'congs': list(np.unique([int(xx[1][2:5]) for xx in v['votes']])),
                     'meta': {
                         'all': {
                             'log_likelihood': -res_idpt[i]['llend'],

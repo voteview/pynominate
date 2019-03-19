@@ -4,6 +4,7 @@ from pprint import pprint
 from numpy.random import uniform
 from pynominate import nominate
 from pynominate import payload
+import cProfile, pstats, StringIO
 
 sessions = 10
 # Recovers right ideal points?
@@ -14,10 +15,8 @@ pload = {
             uniform(-0.5, 0.5),
             uniform(-0.5, 0.5)]
            for t in range(sessions) for i in range(100)},
-    "idpt": {"0": [0.0, 0.0], "1": [0.0, 0.0]}
+    "idpt": {"0": [0.5, 0.5], "1": [0.0, 0.0]}
 }
-
-#pprint(pload)
 
 # Actual ideal points
 x = {"0": [[0.5,  0.7],
@@ -59,15 +58,25 @@ ret = nominate.update_nominate(
 
 pprint(ret['idpt'])
 
+# pr = cProfile.Profile()
+# pr.enable()
 ret = nominate.update_nominate(
     fullpayload,
     update=['idpt'],
-    lambdaval=100.0,
+    lambdaval=100000.0,
     maxiter=1,
     add_meta=[]
 )
-
 pprint(ret['idpt'])
+# pr.disable()
+# pprint(ret['idpt'])
+# s = StringIO.StringIO()
+# ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+
+# ps.print_stats()
+# print(s.getvalue())
+
+
 # TODO TEST
 
 # newpayload = add_votes(add_starts(modify_payload(fullpayload)))
