@@ -8,20 +8,26 @@ def int_payload():
     payload["memberwise"] = [
         {"icpsr": 1,
          "update": 1,
-         "votes": [[1, "MH1150001"], [-1, "MH1150002"]]},
+         "votes": [[1, "MH1150001"], [-1, "MH1150002"], [1, "MH1160001"], [-1, "MH1170001"]]},
         {"icpsr": 2,
          "update": 1,
-         "votes": [[-1, "MH1150001"], [1, "MH1150002"]]},
+         "votes": [[-1, "MH1150001"], [1, "MH1150002"], [-1, "MH1160001"]]},
+        {"icpsr": 3,
+         "update": 1,
+         "votes": [[1, "MH1170001"]]}
     ]
 
     payload["idpt"] = {
-        1: [-0.5, -0.5],
-        2: [0.5, 0.5],
+        1: [-0.511, -0.512],
+        2: [0.521, 0.522],
+        3: [0.031, 0.032]
     }
 
     payload["bp"] = {
         "MH1150001": [0.02, -0.02, -0.8, -0.5],
         "MH1150002": [-0.02, 0.02, 0.8, 0.5],
+        "MH1160001": [-0.02, 0.02, 0.8, 0.5],
+        "MH1170001": [-0.02, 0.02, 0.8, 0.5]
     }
     return payload
 
@@ -44,4 +50,7 @@ def str_payload(broken_payload):
         {k: str(v) if k == "icpsr" else v for k, v in m.iteritems()}
         for m in str_payload["memberwise"]
     ]
+    str_payload["icpsr"] = {
+        str(k): v for k, v in str_payload["idpt"].iteritems()
+    }
     return str_payload
