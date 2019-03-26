@@ -1,8 +1,10 @@
+from pprint import pprint
+
 # Methods to prepare payloads for dynamic estimation
 def add_congresswise(payload, min_congresses=0):
     """Modifies the 'idpt' collection of the payload to have a slot for an idpt per session and adds time to the votes collection"""
     tmp_idpt = {}
-    idpt_key_str = isinstance(payload['idpt'].keys()[0], str)
+    idpt_key_str = isinstance(payload['idpt'].keys()[0], basestring)
     for i, m in enumerate(payload['memberwise']):
         max_cong = 0
         min_cong = 999

@@ -15,7 +15,7 @@ pload = {
             uniform(-0.5, 0.5),
             uniform(-0.5, 0.5)]
            for t in range(sessions) for i in range(100)},
-    "idpt": {"0": [0.5, 0.5], "1": [0.0, 0.0]}
+    "idpt": {"0": [0.5, 0.5], "1": [0.0, 0.0]},
 }
 
 # Actual ideal points
@@ -68,6 +68,42 @@ ret = nominate.update_nominate(
     add_meta=[]
 )
 pprint(ret['idpt'])
+
+
+vote_dat = {}
+for m in fullpayload['memberwise']:
+    for v in m['votes']:
+        rcid = v[1]
+        if rcid in vote_dat:
+            vote_dat[rcid] += [[v[0], m['icpsr']]]
+        else:
+            vote_dat[rcid] = [[v[0], m['icpsr']]]
+
+fullpayload['votes'] = [
+    {
+        'id': rcid,
+        'update': 1,
+        'votes': votes
+    }
+    for rcid, votes in vote_dat.iteritems()
+]
+
+# Confirm idpt by_t and overall ll both sum to the meta ll
+ret = nominate.update_nominate(
+    fullpayload,
+    update=['idpt', 'bw'],
+    lambdaval=0,
+    maxiter=1,
+    add_meta=[]
+)
+
+print("total")
+print(ret['log_likelihood'])
+print("idpt")
+print(sum([x['meta']['all']['log_likelihood'] for x in ret['idpt'].values()]))
+print("idpt by_t")
+print(sum([x[0] for m in ret['idpt'].values() for x in m['meta']['by_t']]))
+
 # pr.disable()
 # pprint(ret['idpt'])
 # s = StringIO.StringIO()

@@ -179,7 +179,7 @@ def dwnominate_ll_by_t(bp, idpts, v, w, b, T):
     ll = np.matmul(ll, design)
     with np.warnings.catch_warnings():
         np.warnings.filterwarnings('ignore', r'invalid')
-        gmps = np.exp(ll / np.sum(design, axis=0))
+        gmps = np.nan_to_num(np.exp(ll / np.sum(design, axis=0)))
     return zip(-1*ll, gmps)
 
 
@@ -537,6 +537,23 @@ def add_member_meta(payload, ret, by_congress=True):
     return ret
 
 
+def get_ideal_for_rc(payload, i):
+    """Build a (2,n_voters) array of ideal points that correspond to votes
+    cast on the ith rollcall in the 'votes' collection of the payload"""
+    return np.transpose(np.array([
+        # Get the correct row from the ideal point matrix for icpsr xx[1]
+        # if they have multiple idealpoints
+        payload['idpt'][str(xx[1])]['idpts'][
+            int(payload['votes'][i]['id'][2:5]) -
+            payload['idpt'][str(xx[1])]['min_cong']
+        ]
+        if np.size(payload['idpt'][str(xx[1])]['idpts'], 0) > 1
+        # If only one ideal point, just get that one ideal point
+        else payload['idpt'][str(xx[1])]['idpts'][0]
+        for xx in payload['votes'][i]['votes']
+    ]))
+
+
 def update_nominate(
         payload,
         update=['bp', 'idpt', 'bw'],
@@ -565,7 +582,9 @@ def update_nominate(
         nchoices = sum([len([xx for xx in x['votes'] if xx != 0])
                         for x in payload['votes']])
         print "(000) %i total vote choices observed..." % nchoices
-
+    else:
+        nchoices = 1
+    
     # Run dwnominate...
     pool = Pool(cores)
     mymap = pool.map  # allow switching to in/out parallel processing for debugging
@@ -578,22 +597,18 @@ def update_nominate(
         b = 8.8633
         w = 0.4619
     iter = 0
+    overall_loglik = []
+    bp_trace = []
+    idpt_trace = []
+    bw_trace = [{'b': b, 'w': w}]
     while iter < maxiter:
         # Update roll call parameters...
         if 'bp' in update:
             starttime = time.time()
-            dat = [
+            bp_dat = [
                 {
                     'votes': np.array(tuple(xx[0] for xx in payload['votes'][i]['votes'])),
-                    'ideal': np.transpose(np.array([
-                        payload['idpt'][str(xx[1])]['idpts'][
-                            int(payload['votes'][i]['id'][2:5]) -
-                            payload['idpt'][str(xx[1])]['min_cong']
-                        ]
-                        if np.size(payload['idpt'][str(xx[1])]['idpts'], 0) > 1
-                        else payload['idpt'][str(xx[1])]['idpts'][0]
-                        for xx in payload['votes'][i]['votes']
-                    ]))
+                    'ideal': get_ideal_for_rc(payload, i),
                 }
                 for i in range(len(payload['votes'])) if payload['votes'][i]['update']
             ]
@@ -605,22 +620,44 @@ def update_nominate(
             res_bp = mymap(
                 update_bp_star,
                 zip(
-                    dat,
-                    [w] * len(dat),
-                    [b] * len(dat),
+                    bp_dat,
+                    [w] * len(bp_dat),
+                    [b] * len(bp_dat),
                     start
                 )
             )
+            starting_loglik = 0.0
+            bp_changes = {
+                'min': [999.0]*4,
+                'max': [0.0]*4,
+                'sum': [0.0]*4,
+                'n': 0
+            }
             for i, v in enumerate(payload['votes']):
                 if v['update']:
+                    # Update payload values
                     payload['bp'][v['id']] = res_bp[i]['bp']
+                    # Calculate total starting log likelihood
+                    starting_loglik += res_bp[i]['llstart']
+                    # Trace value diffs for convergence
+                    abs_diff = abs(start[i] - res_bp[i]['bp'])
+                    for bpi in range(4):
+                        if abs_diff[bpi] < bp_changes['min'][bpi]:
+                            bp_changes['min'][bpi] = abs_diff[bpi]
+                        if abs_diff[bpi] > bp_changes['max'][bpi]:
+                            bp_changes['max'][bpi] = abs_diff[bpi]
+                        bp_changes['sum'][bpi] += abs_diff[bpi]
+                    bp_changes['n'] += 1
+            bp_trace += [bp_changes]
+            if iter == 0:
+                overall_loglik += [[-starting_loglik, np.exp(-starting_loglik / nchoices)]]
             print "\t\t" + str(res_bp[0]['bp'])
             print "(%03i) Rollcall update took %2.2f seconds (%i votes)..." % (iter + 1, time.time() - starttime, len(start))
 
         # Update member
         if 'idpt' in update or 'bw' in update:
             starttime = time.time()
-            dat = [
+            idpt_dat = [
                 {
                     'votes': np.array(tuple(xx[0] for xx in payload['memberwise'][i]['votes'])),
                     'bp': np.transpose(np.array([
@@ -642,18 +679,36 @@ def update_nominate(
             res_idpt = mymap(
                 update_idpt_star,
                 zip(
-                    dat,
-                    [w] * len(dat),
-                    [b] * len(dat),
+                    idpt_dat,
+                    [w] * len(idpt_dat),
+                    [b] * len(idpt_dat),
                     start,
-                    [lambdaval] * len(dat),
-                    [False] * len(dat)
+                    [lambdaval] * len(idpt_dat),
+                    [False] * len(idpt_dat)
                 )
             )
+
+            idpt_changes = {
+                'min': [999.0]*2,
+                'max': [0.0]*2,
+                'sum': [0.0]*2,
+                'n': 0
+            }
             for i, v in enumerate(payload['memberwise']):
                 if v['update']:
                     payload['idpt'][str(v['icpsr'])]['idpts'] = res_idpt[i]['x']
-
+                    # Trace value diffs for convergence
+                    abs_diff = abs(start[i] - res_idpt[i]['x'])
+                    for congi, idpt_row in enumerate(res_idpt[i]['x']):
+                        abs_diff = abs(start[i][congi] - idpt_row)
+                        for idpti in range(2):
+                            if abs_diff[idpti] < idpt_changes['min'][idpti]:
+                                idpt_changes['min'][idpti] = abs_diff[idpti]
+                            if abs_diff[idpti] > idpt_changes['max'][idpti]:
+                                idpt_changes['max'][idpti] = abs_diff[idpti]
+                            idpt_changes['sum'][idpti] += abs_diff[idpti]
+                        idpt_changes['n'] += 1
+            idpt_trace += [idpt_changes]
             print "(%03i) Member update took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
             print "\t\t Ideal Point[0] = " + str(res_idpt[0]['x'])
 
@@ -662,20 +717,21 @@ def update_nominate(
             starttime = time.time()
             # Add new ideal points to 'dat' used in ideal point update above
             for i, mem in enumerate(payload['memberwise']):
-
                 min_cong = payload['idpt'][str(mem['icpsr'])]['min_cong']
                 idpts = payload['idpt'][str(mem['icpsr'])]['idpts']
                 multiple_sessions = np.size(idpts, 0) > 1
                 
-                dat[i]['ideal'] = np.transpose(np.array([
+                idpt_dat[i]['ideal'] = np.transpose(np.array([
                     idpts[int(v[1][2:5]) - min_cong]
                     if multiple_sessions
                     else idpts[0]
                     for v in mem['votes']
                 ]))
             print "(%03i) Weight and Beta update data marshal took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
-            res_wb = update_wb(dat, w, b, pool)
+            res_wb = update_wb(idpt_dat, w, b, pool)
             w, b = res_wb['w'], res_wb['b']
+            bw_trace += [{'b': b, 'w': w}]
+            overall_loglik += [[-res_wb['llend'], np.exp(-res_wb['llend'] / nchoices)]]
             print "(%03i) Weight and Beta  update took %2.2f seconds..." % (iter + 1, time.time() - starttime)
             print "\t\t w = %7.4f, b = %7.4f" % (w, b)
             print "(%03i) Iteration Loglik: -%9.4f across %i choices (GMP=%6.4f)\n" % (iter + 1, res_wb['llend'], nchoices, np.exp(-res_wb['llend'] / nchoices))
@@ -692,38 +748,85 @@ def update_nominate(
         ret_bp = {}
         for i, v in enumerate(payload['votes']):
             if v['update']:
+                # Recompute log-likelihood if idpt or bw updated
+                if 'idpt' in update or 'bw' in update:
+                    # rebuild ideal point data for ll calculation using new ideal points
+                    if 'idpt' in update:
+                        bp_dat[i]['ideal'] = get_ideal_for_rc(payload, i)
+                    
+                    llend = -dwnominate_ll_bp(
+                        res_bp[i]['bp'],
+                        bp_dat[i],
+                        w,
+                        b
+                    )
+                else:
+                   llend = -res_bp[i]['llend']
                 ret_bp[v['id']] = {
                     'bp': list(res_bp[i]['bp']),
-                    'log_likelihood': -res_bp[i]['llend'],
-                    'gmp': np.exp(-res_bp[i]['llend'] / len(v['votes'])),
+                    'log_likelihood': llend,
+                    'gmp': np.exp(llend / len(v['votes'])),
                     'status': res_bp[i]['status']
                 }
         ret['bp'] = ret_bp
+        ret['bp_trace'] = bp_trace
     if 'idpt' in update:
         ret_idpt = {}
         for i, v in enumerate(payload['memberwise']):
             if v['update']:
+                congs = list(np.unique([int(xx[1][2:5]) for xx in v['votes']]))
+                min_cong = min(congs)
+                # Recompute log-likelihood if bw updated
+                if 'bw' in update:
+                    llend = dwnominate_ll_idpt_spline(
+                        res_idpt[i]['x'],
+                        idpt_dat[i],
+                        w,
+                        b,
+                        lambdaval=0
+                    )
+                    # For fixed members, have to recompute t to get proper
+                    # by congress LLs
+                    if len(congs) > 1 and len(res_idpt[i]['x']) == 1:
+                        idpt_dat[i]['t'] = np.array(tuple(int(xx[1][2:5]) - min_cong for xx in v['votes']))
+                        temp_idpt = np.array(res_idpt[i]['x'].tolist() * (max(idpt_dat[i]['t']) + 1))
+                    else:
+                        temp_idpt = res_idpt[i]['x']
+                    ll_gmp = dwnominate_ll_idpt_spline(
+                        temp_idpt,
+                        idpt_dat[i],
+                        w,
+                        b,
+                        lambdaval=0,
+                        include_penalty=False,
+                        by_t=True
+                    )
+                else:
+                    llend = res_idpt[i]['llend']
+                    ll_gmp = res_idpt[i]['ll_gmp']
                 ret_idpt[str(v['icpsr'])] = {
                     'idpts': res_idpt[i]['x'].tolist(),
-                    'congs': list(np.unique([int(xx[1][2:5]) for xx in v['votes']])),
+                    'congs': congs,
                     'meta': {
                         'all': {
-                            'log_likelihood': -res_idpt[i]['llend'],
-                            'gmp': np.exp(-res_idpt[i]['llend'] / len(v['votes']))
+                            'log_likelihood': -llend,
+                            'gmp': np.exp(-llend / len(v['votes']))
                         },
-                        'by_t': res_idpt[i]['ll_gmp'],
+                        'by_t': ll_gmp,
                         'status': res_idpt[i]['status'],
                         'message': res_idpt[i]['message']
                     },
                 }
         ret['idpt'] = ret_idpt
+        ret['idpt_trace'] = idpt_trace
     if 'bw' in update:
         ret['b'] = b
         ret['w'] = w
-
-    if 'bp' in update and 'idpt' in update and 'bw' in update:
         ret['log_likelihood'] = round(-res_wb['llend'], 4)
+        ret['log_likelihood_trace'] = overall_loglik
         ret['GMP'] = np.exp(-res_wb['llend'] / nchoices)
+        ret['lambdaval'] = lambdaval
+        ret['bw_trace'] = bw_trace
 
     if 'idpt' in update and 'members' in add_meta:
         print "Adding member meta (GMP, number_of_votes, etc.)..."
@@ -805,24 +908,37 @@ if __name__ == '__main__':
             ],
             'idpt': {
                 "1": {
-                    "99": [-0.5, 0],
-                    "100": [-0.5, 0]
+                    "idpts": [
+                        [-0.501, -0.502],
+                        [-0.511, -0.512]
+                    ],
+                    "min_cong": 99
                 },
                 "2": {
-                    "99": [0, 0],
-                    "100": [0.5, 0]
+                    "idpts": [
+                        [-0.001, -0.002],
+                        [-0.011, -0.012]
+                    ],
+                    "min_cong": 99
                 },
                 "3": {
-                    "99": [0, 0],
-                    "100": [0, 0],
+                    "idpts": [
+                        [-0.101, 0.102],
+                        [-0.111, 0.112]
+                    ],
+                    "min_cong": 99
                 }
+            },
+            'bw': {
+                'b': 7.7,
+                'w': 0.4
             }
         }
         
         pprint(
             update_nominate(
                 test_payload,
-                update=['bp', 'idpt'],
+                update=['bp', 'idpt', 'bw'],
                 lambdaval=1,
                 maxiter=2,
                 add_meta=[]
