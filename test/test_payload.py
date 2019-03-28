@@ -1,4 +1,5 @@
 from pynominate import payload
+from pynominate import nominate
 from pprint import pprint
 from copy import deepcopy
 
@@ -32,3 +33,20 @@ def test_freezing_short_members(int_payload, str_payload):
                 else:
                     assert v[2] == int(v[1][2:5]) - min_cong
 
+                    
+def test_using_starting_values(str_payload):
+    temp_load = deepcopy(str_payload)
+    temp_load = payload.add_congresswise(temp_load, min_congresses=2)
+    res = nominate.update_nominate(
+        temp_load,
+        update='idpt',
+        lambdaval=1,
+        maxiter=1,
+        add_meta=[],
+    )
+
+    old_load = deepcopy(str_payload)
+    new_load = payload.add_congresswise(old_load, min_congresses=2, idpts=res['idpt'])
+
+    assert new_load["idpt"]["1"]["idpts"] == res["idpt"]["1"]["idpts"]
+    
