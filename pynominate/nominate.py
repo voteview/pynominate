@@ -307,15 +307,17 @@ def dwnominate_ll_idpt(par, d, w, b, lambdaval=None, fixed=True, penalize_outofb
         return ll_val
 
 
-def dwnominate_ll_wb(par, dat, pool):
+def dwnominate_ll_wb(par, dat, pool, b=None):
     """Loglik to be called when updating ideal points"""
+    if b is None:
+        b = par[1]
     args = zip(
         dat,
         [par[0]] * len(dat),
-        [par[1]] * len(dat)
+        [b] * len(dat)
     )
     ll = pool.map(dwnominate_ll_wb_part_star, args)
-    return sum(ll) + (par[0] < 0 and 1e10 or 0) + (par[1] < 0 and 1e300 or 0)
+    return sum(ll) + (par[0] < 0 and 1e10 or 0) + (b < 0 and 1e300 or 0)
 
 
 def update_bp(d, w, b, par0=np.array([0, 0, 0, 0]), opt_method="SLSQP"):
@@ -324,6 +326,7 @@ def update_bp(d, w, b, par0=np.array([0, 0, 0, 0]), opt_method="SLSQP"):
     # Check for valid start...
     dd = par0[0] * par0[0] + par0[1] * par0[1]
     if dd > 1:
+        print "WARNING: Bad rc midpoints encountered, shrinking..."
         par0 = [p / (dd + 0.001) for p in par0]
     if opt_method == "SLSQP":
         opt_constraint = {"type": "ineq",
@@ -457,6 +460,19 @@ def update_wb(d, w0, b0, pool):
     return {u'llend': res['fun'],
             u'w': res['x'][0],
             u'b': res['x'][1]}
+
+
+def update_w(d, w0, b, pool):
+    """Update w and b parameters"""
+    par0 = w0
+    res = minimize(dwnominate_ll_wb,
+                   par0,
+                   method=METHODWB,
+                   options=OPTIONSWB,
+                   constraints=CONSTRAINTSWB,
+                   args=(d, pool, b))
+    return {u'llend': res['fun'],
+            u'w': res['x'][0]}
 
 
 def geo_mean_probability(ll, number_of_votes):
@@ -655,7 +671,7 @@ def update_nominate(
             print "(%03i) Rollcall update took %2.2f seconds (%i votes)..." % (iter + 1, time.time() - starttime, len(start))
 
         # Update member
-        if 'idpt' in update or 'bw' in update:
+        if 'idpt' in update or 'bw' in update or 'w' in update:
             starttime = time.time()
             idpt_dat = [
                 {
@@ -713,7 +729,7 @@ def update_nominate(
             print "\t\t Ideal Point[0] = " + str(res_idpt[0]['x'])
 
         # Update b and w
-        if 'bw' in update:
+        if 'bw' in update or 'w' in update:
             starttime = time.time()
             # Add new ideal points to 'dat' used in ideal point update above
             for i, mem in enumerate(payload['memberwise']):
@@ -728,13 +744,19 @@ def update_nominate(
                     for v in mem['votes']
                 ]))
             print "(%03i) Weight and Beta update data marshal took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
-            res_wb = update_wb(idpt_dat, w, b, pool)
-            w, b = res_wb['w'], res_wb['b']
+            if 'bw' in update:
+                res_wb = update_wb(idpt_dat, w, b, pool)
+                llend_wb = res_wb['llend']
+                w, b = res_wb['w'], res_wb['b']
+            elif 'w' in update:
+                res_w = update_w(idpt_dat, w, b, pool)
+                llend_wb = res_w['llend']
+                w = res_w['w']
             bw_trace += [{'b': b, 'w': w}]
-            overall_loglik += [[-res_wb['llend'], np.exp(-res_wb['llend'] / nchoices)]]
+            overall_loglik += [[-llend_wb, np.exp(-llend_wb / nchoices)]]
             print "(%03i) Weight and Beta  update took %2.2f seconds..." % (iter + 1, time.time() - starttime)
             print "\t\t w = %7.4f, b = %7.4f" % (w, b)
-            print "(%03i) Iteration Loglik: -%9.4f across %i choices (GMP=%6.4f)\n" % (iter + 1, res_wb['llend'], nchoices, np.exp(-res_wb['llend'] / nchoices))
+            print "(%03i) Iteration Loglik: -%9.4f across %i choices (GMP=%6.4f)\n" % (iter + 1, llend_wb, nchoices, np.exp(-llend_wb / nchoices))
         iter += 1
 
     print "(XXX) Total update time elapsed %5.2f minutes." % ((time.time() - firststarttime) / 60)
@@ -749,7 +771,7 @@ def update_nominate(
         for i, v in enumerate(payload['votes']):
             if v['update']:
                 # Recompute log-likelihood if idpt or bw updated
-                if 'idpt' in update or 'bw' in update:
+                if 'idpt' in update or 'bw' in update or 'w' in update:
                     # rebuild ideal point data for ll calculation using new ideal points
                     if 'idpt' in update:
                         bp_dat[i]['ideal'] = get_ideal_for_rc(payload, i)
@@ -761,7 +783,7 @@ def update_nominate(
                         b
                     )
                 else:
-                   llend = -res_bp[i]['llend']
+                    llend = -res_bp[i]['llend']
                 ret_bp[v['id']] = {
                     'bp': list(res_bp[i]['bp']),
                     'log_likelihood': llend,
@@ -777,7 +799,7 @@ def update_nominate(
                 congs = list(np.unique([int(xx[1][2:5]) for xx in v['votes']]))
                 min_cong = min(congs)
                 # Recompute log-likelihood if bw updated
-                if 'bw' in update:
+                if 'bw' in update or 'w' in update:
                     llend = dwnominate_ll_idpt_spline(
                         res_idpt[i]['x'],
                         idpt_dat[i],
@@ -819,12 +841,12 @@ def update_nominate(
                 }
         ret['idpt'] = ret_idpt
         ret['idpt_trace'] = idpt_trace
-    if 'bw' in update:
+    if 'bw' in update or 'w' in update:
         ret['b'] = b
         ret['w'] = w
-        ret['log_likelihood'] = round(-res_wb['llend'], 4)
+        ret['log_likelihood'] = round(-llend_wb, 4)
         ret['log_likelihood_trace'] = overall_loglik
-        ret['GMP'] = np.exp(-res_wb['llend'] / nchoices)
+        ret['GMP'] = np.exp(-llend_wb / nchoices)
         ret['lambdaval'] = lambdaval
         ret['bw_trace'] = bw_trace
 
