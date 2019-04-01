@@ -46,9 +46,13 @@ def _smooth_min_grad(a, b, k=100):
 def circle_constraint_bp(bp):
     """Constrains bill and status quo midpoints to fall in the unit circle as
     well as one of the alternatives."""
-    return [1.0 - np.sum(np.square(bp[0:2])),
-            1.0 - _smooth_min(np.sum(np.square(np.array([bp[0]-bp[2], bp[1]-bp[3]]))),
-                              np.sum(np.square(np.array([bp[0]+bp[2], bp[1]+bp[3]]))))]
+    return [
+        1.0 - np.sum(np.square(bp[0:2])),
+        1.0 - _smooth_min(
+            np.sum(np.square(np.array([bp[0]-bp[2], bp[1]-bp[3]]))),
+            np.sum(np.square(np.array([bp[0]+bp[2], bp[1]+bp[3]])))
+        )
+    ]
 
 
 def circle_constraint_bp_grad(bp):
@@ -187,8 +191,8 @@ def dwnominate_ll_bp(par, d, w, b):
     """Loglik to call when updating bill params"""
     x = d['ideal']
     v = d['votes']
-    outofbounds = (par[0] * par[0] + par[1] * par[1]) > 1
-    return dwnominate_ll(par, x, v, w, b, None) + (outofbounds and 1e300 or 0.0)
+    # outofbounds = (par[0] * par[0] + par[1] * par[1]) > 1.0
+    return dwnominate_ll(par, x, v, w, b, None)  # + (outofbounds and 1e300 or 0.0)
 
 
 def dwnominate_ll_bp_grad(par, d, w, b):
@@ -223,6 +227,7 @@ def dwnominate_ll_idpt_fixed(idpts, d, w, b):
     bp = d['bp']
     v = d['votes']
     return dwnominate_ll(bp, idpts, v, w, b, None)
+
 
 def dwnominate_ll_idpt_fixed_grad(idpts, d, w, b):
     """Gradient of the logliklihood used when estimating the
@@ -328,32 +333,31 @@ def update_bp(d, w, b, par0=np.array([0, 0, 0, 0]), opt_method="SLSQP"):
     if dd > 1:
         print "WARNING: Bad rc midpoints encountered, shrinking..."
         par0 = [p / (dd + 0.001) for p in par0]
+    altpoints = [
+        np.square(par0[0] - par0[2]) + np.square(par0[1] - par0[3]),
+        np.square(par0[0] + par0[2]) + np.square(par0[1] + par0[3]),
+    ]
+    if altpoints[0] > 1 and altpoints[1] > 1:
+        print "WARNING: Bad rc alternatives encountered, setting spreads to 0..."
+        par0 = par0[0:2] + [0.0, 0.0]
     if opt_method == "SLSQP":
         opt_constraint = {"type": "ineq",
-                          "fun": circle_constraint_bp,
-                          "jac": circle_constraint_bp_grad}
+                          "fun": circle_constraint_bp,}
+#                          "jac": circle_constraint_bp_grad}
         opt_jac = dwnominate_ll_bp_grad
     else:
         opt_constraint = None
         opt_jac = None
-    try:
-        llstart = dwnominate_ll_bp(par0, d, w, b)
-        ares = minimize(dwnominate_ll_bp,
-                        par0,
-                        jac=opt_jac,
-                        method=opt_method,
-                        options=OPTIONS,
-                        constraints=opt_constraint,
-                        args=(d, w, b))
-        res = ares['x']
-        llend = dwnominate_ll_bp(res, d, w, b)
-    except Exception, e:
-        print "\t\tError: %s" % e
-        print "\t\tProblem in: %s" % d
-        print "\t\tReturning start values and moving on..."
-        llstart = 0
-        llend = 0
-        res = par0
+    llstart = dwnominate_ll_bp(par0, d, w, b)
+    ares = minimize(dwnominate_ll_bp,
+                    par0,
+                    jac=opt_jac,
+                    method=opt_method,
+                    options=OPTIONS,
+                    constraints=opt_constraint,
+                    args=(d, w, b))
+    res = ares['x']
+    llend = dwnominate_ll_bp(res, d, w, b)
 
     return {u'llstart': llstart,
             u'llend': llend,
@@ -604,7 +608,7 @@ def update_nominate(
     # Run dwnominate...
     pool = Pool(cores)
     mymap = pool.map  # allow switching to in/out parallel processing for debugging
-    #mymap = map
+    # mymap = map
 
     if 'bw' in payload:
         b = payload['bw']['b']
