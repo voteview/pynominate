@@ -327,7 +327,7 @@ def dwnominate_ll_wb(par, dat, pool, b=None):
 
 def update_bp(d, w, b, par0=np.array([0, 0, 0, 0]), opt_method="SLSQP"):
     """update bill parameters for a single vote """
-    
+
     # Check for valid start...
     dd = par0[0] * par0[0] + par0[1] * par0[1]
     if dd > 1:
@@ -339,7 +339,7 @@ def update_bp(d, w, b, par0=np.array([0, 0, 0, 0]), opt_method="SLSQP"):
     ]
     if altpoints[0] > 1 and altpoints[1] > 1:
         print "WARNING: Bad rc alternatives encountered, setting spreads to 0..."
-        par0 = par0[0:2] + [0.0, 0.0]
+        par0 = np.array([par0[0], par0[1], 0.0, 0.0])
     if opt_method == "SLSQP":
         opt_constraint = {"type": "ineq",
                           "fun": circle_constraint_bp,}
@@ -607,8 +607,8 @@ def update_nominate(
     
     # Run dwnominate...
     pool = Pool(cores)
-    mymap = pool.map  # allow switching to in/out parallel processing for debugging
-    # mymap = map
+    # mymap = pool.map  # allow switching to in/out parallel processing for debugging
+    mymap = map
 
     if 'bw' in payload:
         b = payload['bw']['b']
