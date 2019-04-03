@@ -337,7 +337,7 @@ def update_bp(d, w, b, par0=np.array([0, 0, 0, 0]), opt_method="SLSQP"):
         np.square(par0[0] - par0[2]) + np.square(par0[1] - par0[3]),
         np.square(par0[0] + par0[2]) + np.square(par0[1] + par0[3]),
     ]
-    if altpoints[0] > 1 and altpoints[1] > 1:
+    if altpoints[0] > 1.01 and altpoints[1] > 1.01:
         print "WARNING: Bad rc alternatives encountered, setting spreads to 0..."
         par0 = np.array([par0[0], par0[1], 0.0, 0.0])
     if opt_method == "SLSQP":
