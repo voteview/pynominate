@@ -815,13 +815,20 @@ def update_nominate(
                         b,
                         lambdaval=0
                     )
-                    # For fixed members, have to recompute t to get proper
-                    # by congress LLs
-                    if len(congs) > 1 and len(res_idpt[i]['x']) == 1:
-                        idpt_dat[i]['t'] = np.array(tuple(int(xx[1][2:5]) - min_cong for xx in v['votes']))
-                        temp_idpt = np.array(res_idpt[i]['x'].tolist() * (max(idpt_dat[i]['t']) + 1))
-                    else:
-                        temp_idpt = res_idpt[i]['x']
+                else:
+                    llend = res_idpt[i]['llend']
+
+                
+                # For fixed members, have to recompute t to get proper
+                # by congress LLs
+                recompute_t = len(congs) > 1 and len(res_idpt[i]['x']) == 1
+                if recompute_t:
+                    idpt_dat[i]['t'] = np.array(tuple(int(xx[1][2:5]) - min_cong for xx in v['votes']))
+                    temp_idpt = np.array(res_idpt[i]['x'].tolist() * (max(idpt_dat[i]['t']) + 1))
+                else:
+                    temp_idpt = res_idpt[i]['x']
+
+                if 'bw' in update or 'w' in update or recompute_t:
                     ll_gmp = dwnominate_ll_idpt_spline(
                         temp_idpt,
                         idpt_dat[i],
@@ -832,8 +839,8 @@ def update_nominate(
                         by_t=True
                     )
                 else:
-                    llend = res_idpt[i]['llend']
                     ll_gmp = res_idpt[i]['ll_gmp']
+
                 ret_idpt[str(v['icpsr'])] = {
                     'idpts': res_idpt[i]['x'].tolist(),
                     'congs': congs,
