@@ -342,8 +342,8 @@ def update_bp(d, w, b, par0=np.array([0, 0, 0, 0]), opt_method="SLSQP"):
         par0 = np.array([par0[0], par0[1], 0.0, 0.0])
     if opt_method == "SLSQP":
         opt_constraint = {"type": "ineq",
-                          "fun": circle_constraint_bp,}
-#                          "jac": circle_constraint_bp_grad}
+                          "fun": circle_constraint_bp,
+                          "jac": circle_constraint_bp_grad}
         opt_jac = dwnominate_ll_bp_grad
     else:
         opt_constraint = None
@@ -714,6 +714,7 @@ def update_nominate(
                 'sum': [0.0]*2,
                 'n': 0
             }
+            cumulative_loglik = 0.0
             for i, v in enumerate(payload['memberwise']):
                 if v['update']:
                     payload['idpt'][str(v['icpsr'])]['idpts'] = res_idpt[i]['x']
@@ -728,6 +729,9 @@ def update_nominate(
                                 idpt_changes['max'][idpti] = abs_diff[idpti]
                             idpt_changes['sum'][idpti] += abs_diff[idpti]
                         idpt_changes['n'] += 1
+                    cumulative_loglik += res_idpt[i]['llend']
+            if 'wb' not in update and 'w' not in update:
+                overall_loglik += [[-cumulative_loglik, np.exp(-cumulative_loglik / nchoices)]]
             idpt_trace += [idpt_changes]
             print "(%03i) Member update took %2.2f seconds (%i members)..." % (iter + 1, time.time() - starttime, len(start))
             print "\t\t Ideal Point[0] = " + str(res_idpt[0]['x'])
@@ -846,13 +850,15 @@ def update_nominate(
         ret['idpt'] = ret_idpt
         ret['idpt_trace'] = idpt_trace
     if 'bw' in update or 'w' in update:
-        ret['b'] = b
-        ret['w'] = w
-        ret['log_likelihood'] = round(-llend_wb, 4)
-        ret['log_likelihood_trace'] = overall_loglik
-        ret['GMP'] = np.exp(-llend_wb / nchoices)
-        ret['lambdaval'] = lambdaval
         ret['bw_trace'] = bw_trace
+
+    ret['log_likelihood_trace'] = overall_loglik
+    ret['log_likelihood'] = round(overall_loglik[-1][0], 4)
+    ret['GMP'] = round(overall_loglik[-1][1], 4)
+    
+    ret['lambdaval'] = lambdaval
+    ret['b'] = b
+    ret['w'] = w
 
     if 'idpt' in update and 'members' in add_meta:
         print "Adding member meta (GMP, number_of_votes, etc.)..."
