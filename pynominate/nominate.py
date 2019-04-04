@@ -607,8 +607,8 @@ def update_nominate(
     
     # Run dwnominate...
     pool = Pool(cores)
-    # mymap = pool.map  # allow switching to in/out parallel processing for debugging
-    mymap = map
+    mymap = pool.map  # allow switching to in/out parallel processing for debugging
+    # mymap = map
 
     if 'bw' in payload:
         b = payload['bw']['b']
