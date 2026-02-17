@@ -11,7 +11,7 @@ setup(
     include_package_data=True,
     install_requires=[
         "scikit-learn",
-        "matplotlib<3.0",
+        "matplotlib",
     ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
