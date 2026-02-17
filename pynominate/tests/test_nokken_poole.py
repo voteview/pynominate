@@ -35,7 +35,7 @@ def broken_payload(int_payload):
     """broken_payload has inconsistent icpsr types in "idpt" and "memberwise" keys"""
     broken_payload = copy.deepcopy(int_payload)
     broken_payload["idpt"] = {
-        str(k): v for k, v in broken_payload["idpt"].iteritems()
+        str(k): v for k, v in broken_payload["idpt"].items()
     }
     return broken_payload
 
@@ -45,7 +45,7 @@ def str_payload(broken_payload):
     """fixes broken_payload by making memberwise icpsrs also strings"""
     str_payload = copy.deepcopy(broken_payload)
     str_payload["memberwise"] = [
-        {k: str(v) if k == "icpsr" else v for k, v in m.iteritems()}
+        {k: str(v) if k == "icpsr" else v for k, v in m.items()}
         for m in str_payload["memberwise"]
     ]
     return str_payload
@@ -57,7 +57,7 @@ def test_broken_payload_breaks(broken_payload):
 
 
 def test_make_member_congress_votes(int_payload, str_payload):
-    for payload_type, payload in {"int": int_payload, "str": str_payload}.iteritems():
+    for payload_type, payload in {"int": int_payload, "str": str_payload}.items():
         expected_bp = np.transpose(np.array([
             [0.02, -0.02, -0.8, -0.5],
             [-0.02, 0.02, 0.8, 0.5],
@@ -86,7 +86,7 @@ def test_make_member_congress_votes(int_payload, str_payload):
 
         dat = nokken_poole.make_member_congress_votes(payload)
 
-        for k, v in dat.iteritems():
+        for k, v in dat.items():
             if k == "data":
                 for i, data in enumerate(v):
                     np.testing.assert_array_equal(data["votes"], expected_dat["data"][i]["votes"])
@@ -96,7 +96,7 @@ def test_make_member_congress_votes(int_payload, str_payload):
               
 
 def test_nokken_poole_member_estimate(int_payload, str_payload):
-    for payload_type, payload in {"int": int_payload, "str": str_payload}.iteritems():
+    for payload_type, payload in {"int": int_payload, "str": str_payload}.items():
         member_estimates = nokken_poole.nokken_poole(payload)
 
         expected = [
