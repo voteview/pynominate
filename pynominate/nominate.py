@@ -271,7 +271,7 @@ def update_nominate(payload, maxiter=20, cores=int(cpu_count() - 1), update=['bp
                                                    for xx in payload['votes'][i]['votes']]))}
                    for i in range(len(payload['votes'])) if payload['votes'][i]['update']]
             start = [payload['bp'][v['id']]
-                     for v in payload['votes'] if payload['votes'][i]['update']]
+                     for v in payload['votes'] if v['update']]
             print("(%03i) Rollcall update data marshal took %2.2f seconds (%i votes)..." % (iter + 1, time.time() - starttime, len(start)))
             res_bp = mymap(update_bp_star, zip(
                 dat, [w] * len(dat), [b] * len(dat), start))
